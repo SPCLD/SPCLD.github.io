@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mã hóa & Giải mã AES-GCM</title>
+
+    <!-- Thư viện mã hóa -->
+    <script src="crypto-js.min.js"></script>
+    <script src="argon2-bundled.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="3.4.16.cdn.tailwindcss.com.css"></script>
+
+    <!-- Thư viện thông báo đẹp -->
+    <script src="sweetalert2@11.js"></script>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-lg bg-gray-800 p-6 rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold text-center mb-4">🔒 Mã hóa & Giải mã AES-GCM</h1>
+        
+        <label class="block text-sm font-medium mb-1">Nhập văn bản:</label>
+        <textarea id="inputText" class="w-full p-2 text-black rounded-lg mb-3" rows="3"></textarea>
+
+        <label class="block text-sm font-medium mb-1">Nhập mật khẩu:</label>
+        <input type="password" id="password" class="w-full p-2 text-black rounded-lg mb-3" />
+
+        <div class="flex justify-between mb-3">
+            <button onclick="encrypt()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">Mã hóa 🔐</button>
+            <button onclick="decrypt()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">Giải mã 🔓</button>
+        </div>
+
+        <label class="block text-sm font-medium mb-1">Kết quả:</label>
+        <textarea id="outputText" class="w-full p-2 text-black rounded-lg mb-3" rows="3" readonly></textarea>
+
+        <div class="flex justify-between">
+            <button onclick="copyText()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg">📋 Sao chép</button>
+            <button onclick="downloadFile()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg">⬇️ Tải về</button>
+        </div>
+    </div>
+
+    <script>
+        async function encrypt() {
+            var plaintext = document.getElementById("inputText").value;
+            var password = document.getElementById("password").value;
+    
+            if (!plaintext || !password) {
+                Swal.fire("Lỗi!", "Vui lòng nhập văn bản và mật khẩu!", "error");
+                return;
+            }
+    
+            Swal.fire({ title: "Đang mã hóa...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+            try {
+                var iv = crypto.getRandomValues(new Uint8Array(12));
+                var salt = crypto.getRandomValues(new Uint8Array(16));
+    
+                var keyHash = await argon2.hash({
+                    pass: password,
+                    salt: salt,
+                    time: 20,
+                    mem: 102400,
+                    hashLen: 32,
+                    parallelism: 2,
+                    type: argon2.Argon2id
+                });
+    
+                var key = keyHash.hash;
+    
+                var enc = await crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv: iv },
+                    await crypto.subtle.importKey("raw", key, { name: "AES-GCM" }, false, ["encrypt"]),
+                    new TextEncoder().encode(plaintext)
+                );
+    
+                var combinedData = new Uint8Array([...salt, ...iv, ...new Uint8Array(enc)]);
+                document.getElementById("outputText").value = btoa(String.fromCharCode(...combinedData));
+    
+                Swal.fire("Thành công!", "Dữ liệu đã được mã hóa!", "success");
+            } catch (error) {
+                Swal.fire("Lỗi!", "Mã hóa thất bại: " + error.message, "error");
+            }
+        }
+    
+        async function decrypt() {
+            var ciphertext = document.getElementById("inputText").value;
+            var password = document.getElementById("password").value;
+    
+            if (!ciphertext || !password) {
+                Swal.fire("Lỗi!", "Vui lòng nhập văn bản mã hóa và mật khẩu!", "error");
+                return;
+            }
+    
+            Swal.fire({ title: "Đang giải mã...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+            try {
+                var rawData = Uint8Array.from(atob(ciphertext), c => c.charCodeAt(0));
+                var salt = rawData.slice(0, 16);
+                var iv = rawData.slice(16, 28);
+                var encryptedData = rawData.slice(28);
+    
+                var keyHash = await argon2.hash({
+                    pass: password,
+                    salt: salt,
+                    time: 20,
+                    mem: 102400,
+                    hashLen: 32,
+                    parallelism: 2,
+                    type: argon2.Argon2id
+                });
+    
+                var key = keyHash.hash;
+    
+                var decrypted = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv },
+                    await crypto.subtle.importKey("raw", key, { name: "AES-GCM" }, false, ["decrypt"]),
+                    encryptedData
+                );
+    
+                document.getElementById("outputText").value = new TextDecoder().decode(decrypted);
+                Swal.fire("Thành công!", "Dữ liệu đã được giải mã!", "success");
+            } catch (error) {
+                Swal.fire("Lỗi!", "Giải mã thất bại: Mật khẩu sai hoặc dữ liệu bị lỗi!", "error");
+            }
+        }
+    </script>
+
+</body>
+</html>
